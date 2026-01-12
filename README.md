@@ -10,7 +10,7 @@ This repo now includes an opinionated installer script that can install differen
 Quick start (for learners)
 1. Install Termux from F-Droid (recommended) or follow the official Termux distribution instructions.
 2. Clone this repo:
-   - git clone https://github.com/GrimReaper -deadman/Termux-beginner -helper.git
+   - git clone https://github.com/GrimReaper-deadman/Termux-beginner -helper.git
    - cd <repo>
 3. Review the installer and run it:
    - bash scripts/setup-termux.sh --profile recommended
