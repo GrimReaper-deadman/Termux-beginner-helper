@@ -1,0 +1,186 @@
+#!/usr/bin/env bash
+# Simple, safe Termux setup script with profiles for beginners.
+# Review before running. Use --dry-run to preview, --yes to skip confirmation.
+#
+# Usage:
+#   bash scripts/setup-termux.sh --profile recommended
+#   bash scripts/setup-termux.sh --profile full --yes
+#   bash scripts/setup-termux.sh --list
+#   bash scripts/setup-termux.sh --dry-run
+
+set -euo pipefail
+
+SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
+DEFAULT_PROFILE="recommended"
+
+show_help() {
+  cat <<EOF
+${SCRIPT_NAME} — Termux beginner installer
+
+Options:
+  --profile <minimal|recommended|full>  Which package profile to install (default: ${DEFAULT_PROFILE})
+  --list                                Show package lists for each profile
+  --dry-run                             Print actions but do not run installs
+  --yes                                 Skip interactive confirmation
+  --help                                Show this help
+EOF
+}
+
+# Package groups (edit to taste)
+MINIMAL_PACKAGES=(
+  git
+  curl
+  wget
+  nano
+  openssh
+  termux-api
+  coreutils
+  unzip
+  zip
+  jq
+)
+
+RECOMMENDED_PACKAGES=(
+  "${MINIMAL_PACKAGES[@]}"
+  vim
+  python
+  nodejs
+  tmux
+  htop
+  rsync
+)
+
+FULL_PACKAGES=(
+  "${RECOMMENDED_PACKAGES[@]}"
+  clang
+  make
+  pkg-config
+  proot-distro
+  git-lfs
+  gnupg
+  neofetch
+)
+
+PROFILE=""
+DRY_RUN=false
+ASSUME_YES=false
+
+# parse args
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --profile)
+      PROFILE="${2:-}"
+      shift 2
+      ;;
+    --list)
+      PROFILE="__list__"
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN=true
+      shift
+      ;;
+    --yes)
+      ASSUME_YES=true
+      shift
+      ;;
+    --help|-h)
+      show_help
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      show_help
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -z "$PROFILE" ]]; then
+  PROFILE="$DEFAULT_PROFILE"
+fi
+
+print_packages() {
+  echo
+  echo "Profile: $1"
+  echo "Packages:"
+  for p in "${@:2}"; do
+    echo "  - $p"
+  done
+  echo
+}
+
+if [[ "$PROFILE" == "__list__" ]]; then
+  print_packages minimal "${MINIMAL_PACKAGES[@]}"
+  print_packages recommended "${RECOMMENDED_PACKAGES[@]}"
+  print_packages full "${FULL_PACKAGES[@]}"
+  exit 0
+fi
+
+case "$PROFILE" in
+  minimal) PKGS=("${MINIMAL_PACKAGES[@]}") ;;
+  recommended) PKGS=("${RECOMMENDED_PACKAGES[@]}") ;;
+  full) PKGS=("${FULL_PACKAGES[@]}") ;;
+  *)
+    echo "Unknown profile: $PROFILE"
+    show_help
+    exit 2
+    ;;
+esac
+
+if ! command -v pkg >/dev/null 2>&1; then
+  echo "Error: this doesn't look like a Termux environment (no 'pkg' command found)."
+  exit 1
+fi
+
+echo "Selected profile: $PROFILE"
+echo "Will install ${#PKGS[@]} packages:"
+for p in "${PKGS[@]}"; do echo "  - $p"; done
+
+if ! $ASSUME_YES; then
+  read -r -p "Proceed? [y/N] " ans
+  case "$ans" in
+    [Yy]|[Yy][Ee][Ss]) ;;
+    *) echo "Aborting."; exit 1 ;;
+  esac
+fi
+
+if $DRY_RUN; then
+  echo "[DRY RUN] Would run: pkg update && pkg upgrade -y"
+  echo "[DRY RUN] Would install: ${PKGS[*]}"
+  exit 0
+fi
+
+echo "Updating package lists..."
+pkg update -y
+pkg upgrade -y
+
+echo "Installing packages..."
+# Install in batches to avoid very long command lines on some shells
+CHUNK=12
+i=0
+while [ $i -lt "${#PKGS[@]}" ]; do
+  chunk=("${PKGS[@]:$i:$CHUNK}")
+  echo "Installing chunk: ${chunk[*]}"
+  pkg install -y "${chunk[@]}"
+  i=$((i + CHUNK))
+done
+
+echo "Attempting to request storage permission (if available)..."
+if command -v termux-setup-storage >/dev/null 2>&1; then
+  termux-setup-storage || true
+  echo "If prompted, grant storage permission in the Android UI."
+else
+  echo "termux-setup-storage not found on this build; skip."
+fi
+
+WORKSPACE="$HOME/storage/shared/termux-workspace"
+echo "Creating workspace at: $WORKSPACE"
+mkdir -p "$WORKSPACE"
+
+echo
+echo "Done. Recommended next steps:"
+echo "  - Read lessons in the lessons/ folder."
+echo "  - Generate an SSH key: ssh-keygen -t ed25519 -C \"termux@$(hostname)\""
+echo "  - Configure git: git config --global user.name 'Your Name'; git config --global user.email you@example.com"
+echo "  - If you installed proot-distro, run: proot-distro list; proot-distro install <distro>"
